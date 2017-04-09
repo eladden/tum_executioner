@@ -1,0 +1,3 @@
+int building
+int building_point
+bool fileready
