@@ -37,7 +37,11 @@
 #include <std_msgs/Int16.h>
 #include <std_msgs/Int16MultiArray.h>
 #include <cstring>
-
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <image_transport/image_transport.h>
 
 //declarations
 
@@ -50,38 +54,51 @@ class SubscribeAndPublish
 public:
     SubscribeAndPublish()
     {
-       tum_exc_com_ = nex_.advertise<std_msgs::String>("/tum_ardrone/com", 1000);
-       tum_exc_pub_ = nex_.advertise<tum_executioner::ExecMsg>("/ExecTop", 1000);
-       tum_exc_sub_ = nex_.subscribe("/ExecTop", 1000, &SubscribeAndPublish::ExecCb,this);
-       tem_exc_cvel_= nex_.subscribe("/cmd_vel",10, &SubscribeAndPublish::cvelCb,this);
+	tum_exc_com_ = nex_.advertise<std_msgs::String>("/tum_ardrone/com", 1000);
+	tum_exc_pub_ = nex_.advertise<tum_executioner::ExecMsg>("/ExecTop", 1000);
+	tum_exc_sub_ = nex_.subscribe("/ExecTop", 1000, &SubscribeAndPublish::ExecCb,this);
+	tum_exc_cvel_= nex_.subscribe("/cmd_vel",10, &SubscribeAndPublish::cvelCb,this);
+	tum_exc_img_ = nex_.subscribe("/ardrone/image_raw",1, &SubscribeAndPublish::imageCb, this);
+	
     }
     int building_ = 0;
     int points_ = 0;
-    int xvel_ = 999, yvel_ = 999, zvel_ = 999, counter_ = 0;
+    int counter_ = 0;
+    float xvel_ = 999, yvel_ = 999, zvel_ = 999, wvel_ = 999;
     int number_of_buildings_,number_of_points_;
+    cv_bridge::CvImagePtr cv_ptr;
 
     void cvelCb(geometry_msgs::Twist cvel_msg)
     {
      //counter++;
      if (counter_ > 10) {
+          //ROS_INFO("got here");
           xvel_ = cvel_msg.linear.x;
           yvel_ = cvel_msg.linear.y;
           zvel_ = cvel_msg.linear.z;
+	  wvel_ = cvel_msg.angular.z;
+
      } //endif
     } //endCb
 
+            
+        
+    void imageCb(const sensor_msgs::ImageConstPtr& img)
+	{ 
+	 cv_ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::BGR8);
+	}
 
     void ExecCb(const tum_executioner::ExecMsg msg)
     {
        tum_executioner::ExecMsg pub_msg = msg;
-       if ((building_!=msg.building) || (points_ != msg.building_point))  
+       if ((building_!=msg.building) || (points_ != msg.building_point))
        {
-          int tmp_building = msg.building;
-          int tmp_points = msg.building_point;
+          building_ = msg.building;
+          points_ = msg.building_point;
        
-
+	 //ROS_INFO("building_ = %d , msg.building = %d , points_ = %d , msg.points_ = %d ", building_,msg.building,points_, msg.building_point);
   	 std::string command = "c goto ";  
-         gotopoint = read_map(mapname,tmp_building, tmp_points);
+         gotopoint = read_map(mapname,building_, points_);
 
          command += gotopoint;
   
@@ -90,23 +107,32 @@ public:
    
          tum_exc_com_.publish(com_msg); //send the command to the autopilot
 
-         int xvel = 999, yvel = 999, zvel = 999, counter = 0;
-         if ( (xvel_ * xvel_) + (yvel_ * yvel_) + (zvel_ * zvel_) > 0.000125) //wait until the you care close enough to the target. "/cmd_vel" is a vector containing the command velocity, and during 
-										//flight is usually around 0.22 for each direction, when in rest it is usually around 0.02 so the indicator is when all 
-										//three are less  than 0.05 -----> (while (x^2 + y^2 + z^2) > 0.05^2
+         
+	 
+         while ( ((xvel_ * xvel_) > 0.005) || 
+		 ((yvel_ * yvel_) > 0.005) || 
+		 ((zvel_ * zvel_) > 0.005) ||
+		 ((wvel_ * wvel_) > 0.005) ) //wait until the you care close enough to the target. "/cmd_vel" is a vector containing the command velocity, and during flight is usually around 0.22 for 
+				             //each direction, when in rest it is usually around 0.02 
          {
             
-            //ROS_INFO("%d",(xvel_ * xvel_) + (yvel_ * yvel_) + (zvel_ * zvel_)); 
-            counter++;
+            ROS_INFO("x %f, y %f z %f w %f ",xvel_,yvel_ ,zvel_,wvel_ );
+            counter_++;
+	    ros::spinOnce();
+	    
              
-         }//endif
-	 else {
-						// TODO save image file !!!!!!!!!!!!!
-         	pub_msg.fileready = true;
-	        tum_exc_pub_.publish(pub_msg);
-	 }//endelse
+         }//endwhile
+	 						// TODO save image file !!!!!!!!!!!!!
+	 ROS_INFO("x %f, y %f z %f w %f ",xvel_,yvel_ ,zvel_,wvel_ );
+         ROS_INFO("counter = %d ", counter_);
+	 std::remove("Image.png");
+	 cv::imwrite("Image.png",cv_ptr->image);
+         pub_msg.fileready = true;
+	 tum_exc_pub_.publish(pub_msg);
+	 
 	
-         counter = 0;
+         counter_ = 0;
+	 xvel_ = 999; yvel_ = 999; zvel_ = 999; wvel_ = 999;
 	
       }//endif
       
@@ -175,7 +201,8 @@ private:
     ros::Publisher  tum_exc_com_;
     ros::Publisher  tum_exc_pub_;
     ros::Subscriber tum_exc_sub_;
-    ros::Subscriber tem_exc_cvel_;
+    ros::Subscriber tum_exc_cvel_;
+    ros::Subscriber tum_exc_img_;
 
     std::ifstream mapFile;
     std::string gotopoint;
