@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 project(tum_executioner)
 
 ## Find catkin and any catkin packages
-find_package(catkin REQUIRED COMPONENTS roscpp rospy roslib std_msgs genmsg dynamic_reconfigure)
+find_package(catkin REQUIRED COMPONENTS roscpp rospy roslib std_msgs genmsg dynamic_reconfigure cv_bridge)
 
 ## add dynamic reconfigure api
 generate_dynamic_reconfigure_options(cfg/ExParams.cfg)
