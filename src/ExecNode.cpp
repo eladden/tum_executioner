@@ -32,6 +32,7 @@
 #include "geometry_msgs/Twist.h"
 #include "tum_executioner/ExecMsg.h"
 #include "tum_executioner/ExParamsConfig.h"
+#include "tum_ardrone/filter_state.h"
 #include <iostream>
 #include <fstream>
 #include <std_msgs/Int16.h>
@@ -57,31 +58,25 @@ public:
 	tum_exc_com_ = nex_.advertise<std_msgs::String>("/tum_ardrone/com", 1000);
 	tum_exc_pub_ = nex_.advertise<tum_executioner::ExecMsg>("/ExecTop", 1000);
 	tum_exc_sub_ = nex_.subscribe("/ExecTop", 1000, &SubscribeAndPublish::ExecCb,this);
-	tum_exc_cvel_= nex_.subscribe("/cmd_vel",10, &SubscribeAndPublish::cvelCb,this);
+	tum_exc_pos_ = nex_.subscribe("/ardrone/predictedPose",10, &SubscribeAndPublish::posCb,this);
 	tum_exc_img_ = nex_.subscribe("/ardrone/image_raw",1, &SubscribeAndPublish::imageCb, this);
 	
     }
     int building_ = 0;
     int points_ = 0;
     int counter_ = 0;
-    float xvel_ = 999, yvel_ = 999, zvel_ = 999, wvel_ = 999;
+    float targetx_, targety_, targetz_, targetw_;
+    float posx_,posy_,posz_, posw_;
     int number_of_buildings_,number_of_points_;
     cv_bridge::CvImagePtr cv_ptr;
 
-    void cvelCb(geometry_msgs::Twist cvel_msg)
+    void posCb(tum_ardrone::filter_stateConstPtr statePtr)
     {
-     //counter++;
-     if (counter_ > 10) {
-          //ROS_INFO("got here");
-          xvel_ = cvel_msg.linear.x;
-          yvel_ = cvel_msg.linear.y;
-          zvel_ = cvel_msg.linear.z;
-	  wvel_ = cvel_msg.angular.z;
-
-     } //endif
-    } //endCb
-
-            
+     posx_ = statePtr->x;
+     posy_ = statePtr->y;
+     posz_ = statePtr->z;
+     posw_ = statePtr->yaw;
+    }
         
     void imageCb(const sensor_msgs::ImageConstPtr& img)
 	{ 
@@ -96,7 +91,7 @@ public:
           building_ = msg.building;
           points_ = msg.building_point;
        
-	 //ROS_INFO("building_ = %d , msg.building = %d , points_ = %d , msg.points_ = %d ", building_,msg.building,points_, msg.building_point);
+	 
   	 std::string command = "c goto ";  
          gotopoint = read_map(mapname,building_, points_);
 
@@ -108,31 +103,33 @@ public:
          tum_exc_com_.publish(com_msg); //send the command to the autopilot
 
          
-	 
-         while ( ((xvel_ * xvel_) > 0.005) || 
-		 ((yvel_ * yvel_) > 0.005) || 
-		 ((zvel_ * zvel_) > 0.005) ||
-		 ((wvel_ * wvel_) > 0.005) ) //wait until the you care close enough to the target. "/cmd_vel" is a vector containing the command velocity, and during flight is usually around 0.22 for 
-				             //each direction, when in rest it is usually around 0.02 
-         {
+	float xdiff_ = 999, ydiff_ = 999, zdiff_ = 999, wdiff_ = 999;
+        while ( (xdiff_ > 0.04 ) || (ydiff_ > 0.04 ) || (zdiff_ > 0.04 ) || (wdiff_ > 0.01 )) //wait until you are close enough to the target
+	{
+	 xdiff_ = (posx_ - targetx_) * (posx_ - targetx_);
+	 ydiff_ = (posy_ - targety_) * (posy_ - targety_);
+	 zdiff_ = (posz_ - targetz_) * (posz_ - targetz_);
+	 wdiff_ = (posw_ - targetw_) * (posw_ - targetw_);
+
+
             
-            ROS_INFO("x %f, y %f z %f w %f ",xvel_,yvel_ ,zvel_,wvel_ );
+            //ROS_INFO("diff: x %f, y %f z %f w %f ",xdiff_,ydiff_ ,zdiff_,wdiff_);
             counter_++;
+
 	    ros::spinOnce();
-	    
-             
+  
          }//endwhile
-	 						// TODO save image file !!!!!!!!!!!!!
-	 ROS_INFO("x %f, y %f z %f w %f ",xvel_,yvel_ ,zvel_,wvel_ );
-         ROS_INFO("counter = %d ", counter_);
+	 						
+	 //ROS_INFO("x %f, y %f z %f w %f ",xdiff_,ydiff_,zdiff_,wdiff_);
+         //ROS_INFO("counter = %d ", counter_);
 	 std::remove("Image.png");
 	 cv::imwrite("Image.png",cv_ptr->image);
+	 ROS_INFO("image ready");
          pub_msg.fileready = true;
 	 tum_exc_pub_.publish(pub_msg);
 	 
 	
-         counter_ = 0;
-	 xvel_ = 999; yvel_ = 999; zvel_ = 999; wvel_ = 999;
+         counter_ = 0; 
 	
       }//endif
       
@@ -157,10 +154,14 @@ public:
           mapFile.close(); 
         }//endif
       }//endif
+
+      std::stringstream ss(gotopoint); // extract target position
+      ss >> targetx_ >> targety_ >> targetz_ >> targetw_;
+      ROS_INFO("aquired target: x %f , y %f, z %f, w %f", targetx_ , targety_, targetz_, targetw_);
       return(gotopoint);
     }//endfunc
 
-  //void dynConfCb(tum_executioner::ExParamsConfig &config, uint32_t level)
+  //void dynConfCb(tum_executioner::ExParamsConfig &config, uint32_t level) //TODO Fix dynamic parameters
   //{
   // number_of_buildings_ = config.number_of_buildings;
   //  number_of_points_ = config.number_of_points;
@@ -185,14 +186,16 @@ public:
      command = "c start";
      cmd_msg.data = command;
      ros::Rate poll_rate(100);
+      
      while(tum_exc_com_.getNumSubscribers() == 0)
         poll_rate.sleep();
      tum_exc_com_.publish(cmd_msg);
-     cmd_msg.data = "c takeoff";
-     tum_exc_com_.publish(cmd_msg);
+     cmd_msg.data = "c takeoff"; //start the drone
+     tum_exc_com_.publish(cmd_msg); 
+
      while(tum_exc_pub_.getNumSubscribers() == 0)
         poll_rate.sleep();
-     tum_exc_pub_.publish(reset_msg);
+     tum_exc_pub_.publish(reset_msg); // publish reset message
      
     }//endfunc
     
@@ -201,7 +204,7 @@ private:
     ros::Publisher  tum_exc_com_;
     ros::Publisher  tum_exc_pub_;
     ros::Subscriber tum_exc_sub_;
-    ros::Subscriber tum_exc_cvel_;
+    ros::Subscriber tum_exc_pos_;
     ros::Subscriber tum_exc_img_;
 
     std::ifstream mapFile;
