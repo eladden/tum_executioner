@@ -79,7 +79,13 @@ Upon reaching the target the node will snap a picture from the drone camera and 
 After taking the picture the node will change fileready to **TRUE** as an indicator that the file is new.
 
 
+## Additional work required 
 
+I attempted in defining the number of buildings and the number of points-per-building in a dynamic configuration. I was not successful and do not have time to complete this, therefore at the moment these values are defined as internal parameters in ExecNode.cpp (lines 174-176). If you need more buildings and/or more/less points-per-bulding this needs to be redefined internally (and then the package built again).
+
+It would be nice if these parameters can be tuned externally, and while running.
+
+Also the name of the map file is supposed to be "map.txt" this is not a parameter and should you want a different file, you should define this filename as a parameter as well.
 
 
 
