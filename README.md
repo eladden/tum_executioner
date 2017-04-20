@@ -41,6 +41,8 @@ notice this launches `tum_ardrone_2.launch` where the parameters are a bit diffe
 ## Run the node
 Now that the tum ardrone sate estimation, autopilot and GUI are working you can run the executing node
 ``` bash
+cd tum_simulator_ws
+source devel/setup.bash
 rosrun tum_executioner ExecNode
 ```
 
