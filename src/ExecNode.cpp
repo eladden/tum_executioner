@@ -88,7 +88,14 @@ public:
        tum_executioner::ExecMsg pub_msg = msg;
        if ((building_!=msg.building) || (points_ != msg.building_point))
        {
-          building_ = msg.building;
+	  if (building_ != msg.building ) 
+	  {
+		std::string goup_ = "c moveBy 0 0 50 0";
+		com_msg.data = goup_;
+
+		tum_exec_com_.publish(com_msg);
+	  }
+          building_ = msg.building; 
           points_ = msg.building_point;
        
 	 
