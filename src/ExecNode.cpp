@@ -85,10 +85,10 @@ public:
 
     void ExecCb(const tum_executioner::ExecMsg msg)
     {
-	tum_executioner::ExecMsg pub_msg = msg;
-	std_msgs::String com_msg;
        if ((building_!=msg.building) || (points_ != msg.building_point))
        {
+	  tum_executioner::ExecMsg pub_msg = msg;
+	  std_msgs::String com_msg;
 	  if (building_ != msg.building ) 
 	  {
 		std::string goup_ = "c moveBy 0 0 50 0";
