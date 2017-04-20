@@ -85,7 +85,8 @@ public:
 
     void ExecCb(const tum_executioner::ExecMsg msg)
     {
-       tum_executioner::ExecMsg pub_msg = msg;
+	tum_executioner::ExecMsg pub_msg = msg;
+	std_msgs::String com_msg;
        if ((building_!=msg.building) || (points_ != msg.building_point))
        {
 	  if (building_ != msg.building ) 
@@ -93,7 +94,7 @@ public:
 		std::string goup_ = "c moveBy 0 0 50 0";
 		com_msg.data = goup_;
 
-		tum_exec_com_.publish(com_msg);
+		tum_exc_com_.publish(com_msg);
 	  }
           building_ = msg.building; 
           points_ = msg.building_point;
@@ -104,7 +105,7 @@ public:
 
          command += gotopoint;
   
-         std_msgs::String com_msg;
+         
          com_msg.data = command; // the command now contains "goto -whatever was in the map*"  i.e. "goto 1 2 1 90" 
    
          tum_exc_com_.publish(com_msg); //send the command to the autopilot
